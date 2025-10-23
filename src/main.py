@@ -33,7 +33,6 @@ class ALPROSAGOSystem:
         # Временный кэш в памяти, если Redis недоступен
         self.memory_cache = {}
 
-        # Список камер
         self.camera_urls = [url.strip() for url in os.getenv('CAMERA_RTSP_URLS', '').split(',') if url.strip()]
         self.check_interval = int(os.getenv('CHECK_INTERVAL', 60))
 
