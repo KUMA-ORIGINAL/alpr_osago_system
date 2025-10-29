@@ -6,7 +6,8 @@ import time
 from datetime import datetime
 from typing import Dict, Any
 import cv2
-from fastapi import FastAPI
+import numpy as np
+from fastapi import FastAPI, UploadFile, File
 from contextlib import asynccontextmanager
 import redis
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -205,7 +206,7 @@ async def health():
         "memory_cache": len(system.memory_cache)
     }
 
-@app.get("/violations")
+@app.get("/api/violations/")
 async def get_violations(limit: int = 10):
     path = "/app/data/violations.json"
     try:
@@ -214,6 +215,49 @@ async def get_violations(limit: int = 10):
             return [json.loads(x) for x in lines]
     except FileNotFoundError:
         return []
+
+@app.post("/api/detect-number/")
+async def detect_number(frame: UploadFile = File(...)):
+    """
+    Принять снимок (изображение), распознать номер и проверить ОСАГО.
+    Возвращает JSON с распознанным номером и статусом ОСАГО.
+    """
+    try:
+        # читаем байты загруженного файла
+        image_bytes = await frame.read()
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if img is None:
+            return {"error": "Невозможно декодировать изображение"}
+
+        # Распознаём номер (может вернуть несколько)
+        plates = system.alpr.detect_plates(img)
+        if not plates:
+            return {"plate": None, "has_osago": None, "message": "Номер не найден"}
+
+        # выбираем номер с максимальной уверенностью
+        best = max(plates, key=lambda p: p["confidence"])
+        plate = best["plate"].replace(" ", "").replace("-", "").upper()
+        conf = best["confidence"]
+
+        if conf < 0.7 or len(plate) < 5:
+            return {"plate": plate, "confidence": conf, "has_osago": None, "message": "Слабая уверенность"}
+
+        cached, has_osago = system.get_cached_result(plate)
+        if not cached:
+            has_osago = await system.osago_checker.check_osago(plate)
+            system.set_cached_result(plate, has_osago)
+
+        result = {
+            "plate": plate,
+            "confidence": conf,
+            "has_osago": has_osago,
+        }
+        return result
+
+    except Exception as e:
+        logger.exception("Ошибка при распознавании номера")
+        return {"error": str(e)}
 
 if __name__ == "__main__":
     import uvicorn
