@@ -4,16 +4,11 @@ services:
     build: ./src
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - CAMERA_RTSP_URLS=${CAMERA_RTSP_URLS}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
-      - OSAGO_API_URL=${OSAGO_API_URL}
-      - OSAGO_API_KEY=${OSAGO_API_KEY}
-      - CHECK_INTERVAL=${CHECK_INTERVAL:-60}
-      - ALLOWED_COUNTRIES=${ALLOWED_COUNTRIES:-RU,KZ,BY}
     volumes:
       - ./src:/app
       - ./data:/app/data

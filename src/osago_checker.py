@@ -55,9 +55,7 @@ class OSAGOChecker:
                     return False
 
     def _check_osago_sync(self, plate_number: str) -> bool:
-        """Синхронная проверка ОСАГО (выполняется в отдельном потоке)"""
         try:
-            # Открываем страницу проверки
             logger.debug(f"Открываем страницу проверки для {plate_number}")
             page = self.browser.open(self.base_url, timeout=self.request_timeout)
 
@@ -65,35 +63,25 @@ class OSAGOChecker:
                 logger.error(f"Не удалось открыть страницу проверки: HTTP {page.status_code}")
                 return False
 
-            # Ищем форму
-            form = self.browser.page.select_one("form.FormCheck_root__5EGkn")
-            if not form:
-                logger.error("Форма проверки не найдена на странице")
-                return False
-
-            # Находим поле ввода номера
-            input_field = form.select_one("input[name='vehicle_gov_plate']")
-            if not input_field:
-                logger.error("Поле ввода номера не найдено в форме")
+            # Выбираем форму через встроенный метод
+            try:
+                self.browser.select_form("form.FormCheck_root__5EGkn")
+            except Exception as e:
+                logger.error(f"Форма проверки не найдена: {e}")
                 return False
 
             # Заполняем форму
             self.browser["vehicle_gov_plate"] = plate_number
 
-            # Отправляем форму
             logger.debug(f"Отправляем форму с номером {plate_number}")
-            result_page = self.browser.submit(form, page.url)
+            result_page = self.browser.submit_selected(timeout=self.request_timeout)
 
             if not result_page.ok:
                 logger.error(f"Ошибка при отправке формы: HTTP {result_page.status_code}")
                 return False
 
-            # Парсим результат
             return self._parse_result_page(result_page, plate_number)
 
-        except mechanicalsoup.LinkNotFoundError as e:
-            logger.error(f"Элемент не найден на странице: {e}")
-            return False
         except Exception as e:
             logger.error(f"Неожиданная ошибка при проверке ОСАГО: {e}")
             return False
@@ -260,7 +248,7 @@ async def main():
         print(f"ОСАГО для 01KG120AAA: {'ЕСТЬ' if result else 'НЕТ'}")
 
         # Проверка нескольких номеров
-        plates = ["01KG120AAA", "01KG999BBB", "02KG123CCC"]
+        plates = ["01KG929AEV",]
         results = await checker.check_multiple_plates(plates)
 
         for plate, has_osago in results.items():
