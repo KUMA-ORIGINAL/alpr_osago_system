@@ -6,3 +6,4 @@ uvicorn==0.38.0
 redis==6.4.0
 httpx==0.28.1
 MechanicalSoup==1.4.0
+easyocr==1.7.2
