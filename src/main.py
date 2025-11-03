@@ -219,8 +219,8 @@ async def get_violations(limit: int = 10):
 @app.post("/api/detect-number/")
 async def detect_number(frame: UploadFile = File(...)):
     """
-    Принять снимок (изображение), распознать номер и проверить ОСАГО.
-    Возвращает JSON с распознанным номером и статусом ОСАГО.
+    Принять снимок (изображение), распознать ВСЕ номера и проверить ОСАГО по каждому.
+    Возвращает JSON со списком результатов.
     """
     try:
         # читаем байты загруженного файла
@@ -230,30 +230,41 @@ async def detect_number(frame: UploadFile = File(...)):
         if img is None:
             return {"error": "Невозможно декодировать изображение"}
 
-        # Распознаём номер (может вернуть несколько)
+        # Распознаём номера (может вернуть несколько)
         plates = system.alpr.detect_plates(img)
         if not plates:
-            return {"plate": None, "has_osago": None, "message": "Номер не найден"}
+            return {"results": [], "message": "Номера не найдены"}
 
-        # выбираем номер с максимальной уверенностью
-        best = max(plates, key=lambda p: p["confidence"])
-        plate = best["plate"].replace(" ", "").replace("-", "").upper()
-        conf = best["confidence"]
+        results = []
 
-        if conf < 0.7 or len(plate) < 5:
-            return {"plate": plate, "confidence": conf, "has_osago": None, "message": "Слабая уверенность"}
+        for p in plates:
+            # очистим и нормализуем текст
+            plate = p["plate"].replace(" ", "").replace("-", "").upper()
+            conf = float(p.get("confidence", 0))
 
-        cached, has_osago = system.get_cached_result(plate)
-        if not cached:
-            has_osago = await system.osago_checker.check_osago(plate)
-            system.set_cached_result(plate, has_osago)
+            # Проверяем минимальную уверенность
+            if conf < 0.7 or len(plate) < 5:
+                results.append({
+                    "plate": plate,
+                    "confidence": conf,
+                    "has_osago": None,
+                    "message": "Слабая уверенность"
+                })
+                continue
 
-        result = {
-            "plate": plate,
-            "confidence": conf,
-            "has_osago": has_osago,
-        }
-        return result
+            # Проверяем кеш ОСАГО
+            cached, has_osago = system.get_cached_result(plate)
+            if not cached:
+                has_osago = await system.osago_checker.check_osago(plate)
+                system.set_cached_result(plate, has_osago)
+
+            results.append({
+                "plate": plate,
+                "confidence": conf,
+                "has_osago": has_osago
+            })
+
+        return {"results": results}
 
     except Exception as e:
         logger.exception("Ошибка при распознавании номера")
