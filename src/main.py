@@ -8,6 +8,7 @@ from typing import Dict, Any
 import cv2
 import numpy as np
 from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import redis
 from redis.exceptions import ConnectionError as RedisConnectionError
@@ -196,6 +197,14 @@ async def lifespan(app: FastAPI):
     logger.info("ALPR‑система остановлена")
 
 app = FastAPI(title="ALPR OSAGO System", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],          # Разрешить все источники
+    allow_credentials=True,
+    allow_methods=["*"],          # Разрешить все HTTP-методы
+    allow_headers=["*"],          # Разрешить все заголовки
+)
 
 @app.get("/health")
 async def health():
