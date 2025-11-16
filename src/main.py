@@ -225,6 +225,7 @@ async def get_violations(limit: int = 10):
     except FileNotFoundError:
         return []
 
+
 @app.post("/api/detect-number/")
 async def detect_number(frame: UploadFile = File(...)):
     """
@@ -245,39 +246,37 @@ async def detect_number(frame: UploadFile = File(...)):
             return {"results": [], "message": "Номера не найдены"}
 
         results = []
+        strong_confidence_found = False  # флаг для уверенных номеров
 
         for p in plates:
             # очистим и нормализуем текст
             plate = p["plate"].replace(" ", "").replace("-", "").upper()
             conf = float(p.get("confidence", 0))
 
-            # Проверяем минимальную уверенность
-            if conf < 0.7 or len(plate) < 5:
+            if conf >= 0.7 and len(plate) >= 5:
+                strong_confidence_found = True
+                # Проверяем кеш ОСАГО
+                cached, has_osago = system.get_cached_result(plate)
+                if not cached:
+                    has_osago = await system.osago_checker.check_osago(plate)
+                    system.set_cached_result(plate, has_osago)
+
                 results.append({
                     "plate": plate,
                     "confidence": conf,
-                    "has_osago": None,
-                    "message": "Слабая уверенность"
+                    "has_osago": has_osago
                 })
-                continue
 
-            # Проверяем кеш ОСАГО
-            cached, has_osago = system.get_cached_result(plate)
-            if not cached:
-                has_osago = await system.osago_checker.check_osago(plate)
-                system.set_cached_result(plate, has_osago)
-
-            results.append({
-                "plate": plate,
-                "confidence": conf,
-                "has_osago": has_osago
-            })
+        # Если нет номеров с достаточной уверенностью
+        if not strong_confidence_found:
+            return {"results": [], "message": "Номера не найдены"}
 
         return {"results": results}
 
     except Exception as e:
         logger.exception("Ошибка при распознавании номера")
         return {"error": str(e)}
+
 
 if __name__ == "__main__":
     import uvicorn
